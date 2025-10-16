@@ -1,0 +1,23 @@
+# Node modules
+node_modules/
+Commande ECHO activ‚e.
+# Build outputs
+.next/
+dist/
+out/
+Commande ECHO activ‚e.
+# Logs
+*.log
+Commande ECHO activ‚e.
+# Environment variables
+.env
+.env.local
+.env.production
+Commande ECHO activ‚e.
+# OS / IDE files
+.DS_Store
+Thumbs.db
+.vscode/
+Commande ECHO activ‚e.
+# Docker
+data/
