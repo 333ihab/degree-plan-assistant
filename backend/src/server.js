@@ -7,6 +7,8 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import mongoose from 'mongoose';
+//routes imports
+import authRoutes from './routes/auth.routes.js';
 
 // ---------------------------
 // Load environment variables
@@ -23,6 +25,9 @@ const app = express();
 // ---------------------------
 app.use(cors());
 app.use(express.json());
+//auth routes
+app.use("/api/auth", authRoutes);
+
 
 // ---------------------------
 // Log environment info
