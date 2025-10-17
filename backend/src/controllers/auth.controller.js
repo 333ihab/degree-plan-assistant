@@ -1,5 +1,5 @@
 import bcrypt from "bcryptjs";
-import User from "../models/user.js";
+import User from "../models/User.js";
 import { sendConfirmationEmail } from "../utils/emailService.js";
 
 // STEP 1: Sign up with email & password
@@ -36,19 +36,28 @@ export const signUpStep1 = async (req, res) => {
       isConfirmed: false,
     });
 
-    // Send confirmation email
-    await sendConfirmationEmail(email, confirmationCode);
-
-    console.log(`📧 Confirmation email sent to ${email} (code: ${confirmationCode})`);
+    // Send confirmation email (skip if credentials not configured)
+    try {
+      await sendConfirmationEmail(email, confirmationCode);
+      console.log(`📧 Confirmation email sent to ${email} (code: ${confirmationCode})`);
+    } catch (emailError) {
+      console.warn(`⚠️  Email not sent (credentials not configured). Confirmation code: ${confirmationCode}`);
+      // Continue signup even if email fails in development
+    }
 
     res.status(201).json({
       success: true,
       message:
         "Signup step 1 complete. A confirmation code has been sent to your email.",
       userId: newUser._id,
+      // Include confirmation code in development mode for testing
+      ...(process.env.NODE_ENV === 'development' && { 
+        confirmationCode: confirmationCode,
+        devNote: "Confirmation code included because NODE_ENV=development"
+      }),
     });
   } catch (error) {
-    console.error("❌ Signup error:", error.message);
+    console.error("Signup error:", error.message);
     res.status(500).json({
       success: false,
       message: "Server error during signup. Please try again later.",
@@ -59,9 +68,11 @@ export const signUpStep1 = async (req, res) => {
 // STEP 2: Verify confirmation code
 export const signUpStep2 = async (req, res) => {
   try {
-    const { userId, code } = req.body;
+    // Accept both 'code' and 'confirmationCode' for flexibility
+    const { userId, code, confirmationCode } = req.body;
+    const verificationCode = code || confirmationCode;
 
-    if (!userId || !code) {
+    if (!userId || !verificationCode) {
       return res
         .status(400)
         .json({ message: "Please provide both userId and confirmation code." });
@@ -76,7 +87,7 @@ export const signUpStep2 = async (req, res) => {
       return res.status(400).json({ message: "Account already confirmed." });
     }
 
-    if (user.confirmationCode !== code) {
+    if (user.confirmationCode !== verificationCode) {
       return res.status(400).json({ message: "Invalid confirmation code." });
     }
 
@@ -99,4 +110,71 @@ export const signUpStep2 = async (req, res) => {
   }
 };
 
+// STEP 3: Complete Student Profile
+export const completeProfileStep3 = async (req, res) => {
+  try {
+    const { userId, fullName, school, major, classification } = req.body;
 
+    // Validate input
+    if (!userId || !fullName || !school) {
+      return res.status(400).json({
+        success: false,
+        message: "Please provide at least full name and school.",
+      });
+    }
+
+    // Find user
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found." });
+    }
+
+    // Check confirmation
+    if (!user.isConfirmed) {
+      return res.status(400).json({
+        success: false,
+        message: "Please confirm your email before completing your profile.",
+      });
+    }
+
+    // Update common fields
+    user.fullName = fullName;
+    user.school = school;
+
+    // If user is a student, require student-specific fields
+    if (user.role === "student") {
+      if (!major || !classification) {
+        return res.status(400).json({
+          success: false,
+          message: "Students must provide both major and classification.",
+        });
+      }
+      user.major = major;
+      user.classification = classification;
+    }
+
+    await user.save();
+
+    res.status(200).json({
+      success: true,
+      message: `${user.role} profile completed successfully.`,
+      user: {
+        id: user._id,
+        email: user.email,
+        fullName: user.fullName,
+        school: user.school,
+        ...(user.role === "student" && {
+          major: user.major,
+          classification: user.classification,
+        }),
+        role: user.role,
+      },
+    });
+  } catch (error) {
+    console.error(" Profile completion error:", error.message);
+    res.status(500).json({
+      success: false,
+      message: "Server error during profile completion. Please try again later.",
+    });
+  }
+};

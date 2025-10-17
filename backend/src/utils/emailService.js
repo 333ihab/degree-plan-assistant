@@ -1,13 +1,21 @@
 import nodemailer from "nodemailer";
 
 // Create a reusable transporter using Gmail SMTP
-const transporter = nodemailer.createTransport({
-  service: "gmail",
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
-});
+// Only create if credentials are available
+let transporter = null;
+
+if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
+  transporter = nodemailer.createTransport({
+    service: "gmail",
+    auth: {
+      user: process.env.EMAIL_USER,
+      pass: process.env.EMAIL_PASS,
+    },
+  });
+  console.log("✅ Email service configured with credentials");
+} else {
+  console.warn("⚠️  Email credentials not found. Email sending will be disabled.");
+}
 
 /**
  * Sends a confirmation email with a 6-digit code to the user.
@@ -15,6 +23,11 @@ const transporter = nodemailer.createTransport({
  * @param {string} code - The 6-digit confirmation code.
  */
 export const sendConfirmationEmail = async (to, code) => {
+  // Check if transporter is configured
+  if (!transporter) {
+    throw new Error("Email service not configured. Please set EMAIL_USER and EMAIL_PASS in .env file.");
+  }
+
   const mailOptions = {
     from: process.env.EMAIL_FROM || process.env.EMAIL_USER,
     to,
@@ -26,7 +39,7 @@ export const sendConfirmationEmail = async (to, code) => {
         <p>Thank you for signing up! To complete your registration, please use the confirmation code below:</p>
         <h1 style="color: #1E88E5; letter-spacing: 2px;">${code}</h1>
         <p>This code will expire in <strong>10 minutes</strong>.</p>
-        <p>If you didn’t request this, you can safely ignore this message.</p>
+        <p>If you didn't request this, you can safely ignore this message.</p>
         <hr />
         <p style="font-size: 12px; color: #888;">This email was sent automatically by the Degree Plan Assistant System.</p>
       </div>
