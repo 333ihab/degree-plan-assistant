@@ -1,6 +1,8 @@
 import bcrypt from "bcryptjs";
 import User from "../models/User.js";
 import { sendConfirmationEmail } from "../utils/emailService.js";
+import { generateToken } from "../utils/generateToken.js"; // add this import
+
 
 // STEP 1: Sign up with email & password
 export const signUpStep1 = async (req, res) => {
@@ -39,9 +41,9 @@ export const signUpStep1 = async (req, res) => {
     // Send confirmation email (skip if credentials not configured)
     try {
       await sendConfirmationEmail(email, confirmationCode);
-      console.log(`📧 Confirmation email sent to ${email} (code: ${confirmationCode})`);
+      console.log(`Confirmation email sent to ${email} (code: ${confirmationCode})`);
     } catch (emailError) {
-      console.warn(`⚠️  Email not sent (credentials not configured). Confirmation code: ${confirmationCode}`);
+      console.warn(`  Email not sent (credentials not configured). Confirmation code: ${confirmationCode}`);
       // Continue signup even if email fails in development
     }
 
@@ -95,14 +97,14 @@ export const signUpStep2 = async (req, res) => {
     user.confirmationCode = null;
     await user.save();
 
-    console.log(`✅ User ${user.email} confirmed successfully.`);
+    console.log(`User ${user.email} confirmed successfully.`);
 
     res.status(200).json({
       success: true,
       message: "Email verified successfully. Account activated!",
     });
   } catch (error) {
-    console.error("❌ Verification error:", error.message);
+    console.error("Verification error:", error.message);
     res.status(500).json({
       success: false,
       message: "Server error during verification. Please try again later.",
@@ -115,7 +117,6 @@ export const completeProfileStep3 = async (req, res) => {
   try {
     const { userId, fullName, school, major, classification } = req.body;
 
-    // Validate input
     if (!userId || !fullName || !school) {
       return res.status(400).json({
         success: false,
@@ -123,29 +124,22 @@ export const completeProfileStep3 = async (req, res) => {
       });
     }
 
-    // Find user
     const user = await User.findById(userId);
-    if (!user) {
-      return res.status(404).json({ success: false, message: "User not found." });
-    }
+    if (!user) return res.status(404).json({ message: "User not found." });
 
-    // Check confirmation
     if (!user.isConfirmed) {
       return res.status(400).json({
-        success: false,
         message: "Please confirm your email before completing your profile.",
       });
     }
 
-    // Update common fields
+    // Update fields
     user.fullName = fullName;
     user.school = school;
 
-    // If user is a student, require student-specific fields
     if (user.role === "student") {
       if (!major || !classification) {
         return res.status(400).json({
-          success: false,
           message: "Students must provide both major and classification.",
         });
       }
@@ -154,6 +148,9 @@ export const completeProfileStep3 = async (req, res) => {
     }
 
     await user.save();
+
+    // Generate JWT token
+    const token = generateToken(user._id);
 
     res.status(200).json({
       success: true,
@@ -169,12 +166,10 @@ export const completeProfileStep3 = async (req, res) => {
         }),
         role: user.role,
       },
+      token, // <--- include JWT here
     });
   } catch (error) {
-    console.error(" Profile completion error:", error.message);
-    res.status(500).json({
-      success: false,
-      message: "Server error during profile completion. Please try again later.",
-    });
+    console.error("Profile completion error:", error.message);
+    res.status(500).json({ message: "Server error during profile completion." });
   }
 };

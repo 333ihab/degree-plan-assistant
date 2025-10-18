@@ -9,6 +9,6 @@ router.post("/signup/step1", signUpStep1);
 // Step 2: Verify confirmation code
 router.post("/signup/verify", signUpStep2);
 
-// Step 3: Complete profile
+// Step 3: Complete profile (no auth required - part of signup process)
 router.post("/signup/step3", completeProfileStep3);
 export default router;

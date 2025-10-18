@@ -159,7 +159,8 @@ POST /api/auth/signup/step3
    - If user role is "student", require `major` and `classification`
    - For other roles (peer_mentor, fye_teacher, admin), these fields are optional
 5. **Update Profile**: Save all profile information to user document
-6. **Response**: Return success message with complete user profile
+6. **Generate JWT Token**: Create authentication token for the user (expires in 7 days)
+7. **Response**: Return success message with complete user profile and JWT token
 
 ### Response
 ```json
@@ -170,20 +171,74 @@ POST /api/auth/signup/step3
     "id": "507f1f77bcf86cd799439011",
     "email": "user@example.com",
     "fullName": "John Doe",
-    "school": "AUI",
+    "school": "SSE",
     "major": "Computer Science",
     "classification": "Sophomore",
     "role": "student"
-  }
+  },
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjUwN2YxZjc3YmNmODZjZDc5OTQzOTAxMSIsImlhdCI6MTYzMjQ4MzIwMCwiZXhwIjoxNjMzMDg4MDAwfQ.abc123..."
 }
 ```
+
+**Important**: The JWT token is returned after successful profile completion. This token should be stored by the client and included in the `Authorization` header as `Bearer <token>` for all subsequent authenticated requests.
 
 ### Code Location
 - **Controller**: `backend/src/controllers/auth.controller.js` (completeProfileStep3 function)
 - **Route**: `backend/src/routes/auth.routes.js`
+- **Token Generator**: `backend/src/utils/generateToken.js`
 
 ### Testing Status
-✅ **TESTED & WORKING** - Profile completion successful for student role
+✅ **TESTED & WORKING** - Profile completion successful for student role with JWT token generation
+
+---
+
+## JWT Authentication
+
+### Overview
+After completing the signup process (Step 3), users receive a JWT (JSON Web Token) that authenticates them for subsequent requests.
+
+### Token Details
+- **Algorithm**: HS256 (HMAC with SHA-256)
+- **Expiration**: 7 days (configurable via `JWT_EXPIRES_IN` environment variable)
+- **Payload**: Contains user ID
+- **Secret**: Stored in `JWT_SECRET` environment variable
+
+### Using the Token
+To access protected routes, include the JWT token in the `Authorization` header:
+
+```http
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+```
+
+### Authentication Middleware
+The `protect` middleware (`backend/src/middleware/auth.middleware.js`) verifies JWT tokens:
+
+1. **Extract Token**: Gets token from `Authorization` header
+2. **Verify Token**: Validates token signature and expiration
+3. **Load User**: Retrieves user from database and attaches to `req.user`
+4. **Error Handling**: Returns 401 for invalid/expired tokens
+
+### Environment Variables Required
+```env
+JWT_SECRET=your-super-secret-jwt-key-here
+JWT_EXPIRES_IN=7d
+```
+
+### Example: Protecting a Route
+To protect a route and require authentication:
+
+```javascript
+import { protect } from "../middleware/auth.middleware.js";
+
+// Protected route - requires valid JWT token
+router.get("/profile", protect, getUserProfile);
+
+// Inside the controller, access authenticated user:
+export const getUserProfile = async (req, res) => {
+  // req.user contains the authenticated user (without password)
+  res.json({ user: req.user });
+};
+```
 
 ---
 
@@ -252,14 +307,16 @@ EMAIL_FROM=your-email@gmail.com
 ## Files Added/Modified
 
 ### New Files
--  `backend/src/controllers/auth.controller.js` - Authentication logic
--  `backend/src/routes/auth.routes.js` - Authentication routes
--  `backend/src/models/User.js` - User database model
+- `backend/src/controllers/auth.controller.js` - Authentication logic (signup, verification, profile completion)
+- `backend/src/routes/auth.routes.js` - Authentication routes
+- `backend/src/models/User.js` - User database model with role and school enums
 - `backend/src/utils/emailService.js` - Email sending functionality
+- `backend/src/utils/generateToken.js` - JWT token generation utility
+- `backend/src/middleware/auth.middleware.js` - JWT verification middleware
 
 ### Modified Files
--  `backend/src/server.js` - Integrated auth routes
--  `backend/package.json` - Added dependencies (bcryptjs, nodemailer)
+- `backend/src/server.js` - Integrated auth routes
+- `backend/package.json` - Added dependencies (bcryptjs, nodemailer, jsonwebtoken)
 
 ---
 
@@ -267,13 +324,15 @@ EMAIL_FROM=your-email@gmail.com
 
 ```json
 {
-  "bcryptjs": "^2.4.3",
-  "nodemailer": "^6.9.16"
+  "bcryptjs": "^3.0.2",
+  "nodemailer": "^7.0.9",
+  "jsonwebtoken": "^9.0.2"
 }
 ```
 
 - **bcryptjs**: Password hashing and comparison
 - **nodemailer**: Email sending service
+- **jsonwebtoken**: JWT token generation and verification
 
 ---
 
@@ -281,28 +340,37 @@ EMAIL_FROM=your-email@gmail.com
 
 1. ✅ ~~Test Step 2 (Email Verification) in Postman~~ **COMPLETED**
 2. ✅ ~~Implement Step 3 (Complete Profile)~~ **COMPLETED**
-3. 🔄 Add JWT token generation after successful profile completion
-4. 🔄 Implement login functionality
+3. ✅ ~~Add JWT token generation after successful profile completion~~ **COMPLETED**
+4. ✅ ~~Add authentication middleware for protected routes~~ **COMPLETED**
+   - JWT verification middleware implemented
+   - Ready for use on protected routes
+5. 🔄 Implement login functionality
    - Email/password login endpoint
-   - JWT token generation
+   - JWT token generation on login
    - Password comparison with bcrypt
-5. 🔄 Add authentication middleware for protected routes
-   - JWT verification middleware
-   - Role-based authorization
 6. 🔄 Implement password reset functionality
-7. 🔄 Add rate limiting on auth endpoints
-8. 🔄 Consider password strength requirements
+   - Forgot password endpoint
+   - Reset password with token
+7. 🔄 Add role-based authorization middleware
+   - Restrict routes based on user roles (student, peer_mentor, fye_teacher, admin)
+8. 🔄 Add rate limiting on auth endpoints
+9. 🔄 Consider password strength requirements
 
 ---
 
 ## Security Considerations
 
--  Passwords are hashed using bcrypt before storage
--  Confirmation codes are removed after verification
--  Email and password validation implemented
--  JWT tokens for session management (to be implemented)
--  Rate limiting on auth endpoints (to be implemented)
--  Password strength requirements (to be considered)
+- ✅ **Passwords are hashed** using bcrypt (10 salt rounds) before storage
+- ✅ **Confirmation codes are removed** after verification
+- ✅ **Email and password validation** implemented
+- ✅ **JWT tokens for session management** - Tokens expire in 7 days
+- ✅ **Secure token verification** - Middleware validates all tokens
+- ✅ **Password not returned** - User model excludes password in queries (`select: false`)
+- ✅ **School enum validation** - Only accepts SSE, SSAH, or SBA
+- ✅ **Role-based user types** - student, peer_mentor, fye_teacher, admin
+- 🔄 **Rate limiting** on auth endpoints (to be implemented)
+- 🔄 **Password strength requirements** (to be considered)
+- 🔄 **Refresh token mechanism** (to be considered for long-lived sessions)
 
 ---
 
@@ -320,13 +388,13 @@ All three authentication steps have been successfully tested:
 - User ID: `68f28b0353f39f4d2ea91f23`
 - Email: `uihabkass2310@gmail.com`
 - Full Name: Test User
-- School: AUI
+- School: SSE
 - Major: Computer Science
 - Classification: Sophomore
 - Role: Student
 
 ---
 
-**Last Updated**: October 17, 2025  
-**Status**: ✅ All 3 authentication steps implemented and tested successfully
+**Last Updated**: October 18, 2025  
+**Status**: ✅ All 3 authentication steps implemented and tested successfully with JWT token generation
 
