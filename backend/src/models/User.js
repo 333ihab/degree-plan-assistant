@@ -16,6 +16,8 @@ const userSchema = new mongoose.Schema(
     },
     confirmationCode: { type: String, default: null },
     isConfirmed: { type: Boolean, default: false },
+    loginCode: { type: String, default: null },
+    loginCodeExpires: { type: Date, default: null },
     role: {
       type: String,
       enum: ["student", "peer_mentor", "fye_teacher", "admin"],

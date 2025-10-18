@@ -3,19 +3,42 @@
 ## Overview
 This document tracks the implementation progress of the multi-step authentication system for the Degree Plan Assistant application.
 
+**Related Documentation:**
+- [Login Process Documentation](./login-progress.md) - 2-step login with verification codes
+
 ---
 
 ## Current Status: ✅ **COMPLETE**
 
-The authentication journey is fully implemented and tested. All 3 steps of the multi-step authentication flow are working successfully.
+The authentication system is fully implemented:
+- ✅ **Signup**: 3-step registration process (email/password → verification → profile)
+- ✅ **Login**: 2-step login with verification codes (email/password → code verification)
+- ✅ **JWT Authentication**: Token-based authentication for protected routes
+
+---
+
+## Quick Reference: API Endpoints
+
+### Signup Endpoints
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/api/auth/signup/step1` | POST | Register with email & password |
+| `/api/auth/signup/verify` | POST | Verify email with confirmation code |
+| `/api/auth/signup/step3` | POST | Complete profile & receive JWT token |
+
+### Login Endpoints
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/api/auth/login/step1` | POST | Login with email & password, send verification code |
+| `/api/auth/login/verify` | POST | Verify login code & receive JWT token |
 
 ---
 
 ## Implementation Details
 
-### Multi-Step Authentication Flow
+### Multi-Step Signup Flow
 
-The authentication system follows a 3-step process to ensure secure user registration:
+The signup system follows a 3-step process to ensure secure user registration:
 
 ```
 Step 1: Sign Up (Email + Password) ✅
@@ -24,6 +47,8 @@ Step 2: Email Verification ✅
     ↓
 Step 3: Complete Profile ✅
 ```
+
+**Note**: For login flow, see [login-progress.md](./login-progress.md)
 
 ---
 
@@ -290,14 +315,20 @@ EMAIL_FROM=your-email@gmail.com
   password: String (required, minlength: 6, hashed, select: false),
   confirmationCode: String (nullable, default: null),
   isConfirmed: Boolean (default: false),
+  loginCode: String (nullable, default: null),
+  loginCodeExpires: Date (nullable, default: null),
   role: String (enum: ["student", "peer_mentor", "fye_teacher", "admin"], default: "student"),
   fullName: String,
-  school: String,
+  school: String (enum: ["SSE", "SSAH", "SBA"]),
   major: String (nullable, student only),
   classification: String (nullable, student only),
   timestamps: true (createdAt, updatedAt)
 }
 ```
+
+**New Fields for Login:**
+- `loginCode`: 6-digit verification code for 2FA login
+- `loginCodeExpires`: Expiration timestamp (10 minutes from generation)
 
 ### File Location
 `backend/src/models/User.js`
@@ -344,10 +375,11 @@ EMAIL_FROM=your-email@gmail.com
 4. ✅ ~~Add authentication middleware for protected routes~~ **COMPLETED**
    - JWT verification middleware implemented
    - Ready for use on protected routes
-5. 🔄 Implement login functionality
-   - Email/password login endpoint
-   - JWT token generation on login
-   - Password comparison with bcrypt
+5. ✅ ~~Implement login functionality~~ **COMPLETED**
+   - 2-step login with email/password verification
+   - JWT token generation on successful login
+   - Login verification codes with expiration (10 minutes)
+   - See [login-progress.md](./login-progress.md) for details
 6. 🔄 Implement password reset functionality
    - Forgot password endpoint
    - Reset password with token
@@ -395,6 +427,35 @@ All three authentication steps have been successfully tested:
 
 ---
 
+## Known Issues
+
+### ⚠️ Email Delivery Problem
+**Issue**: Confirmation codes are not appearing in the user's mailbox after signup.
+
+**Details**: 
+- The signup process (Step 1) completes successfully and returns the confirmation code in development mode
+- However, users do not receive the confirmation code email in their inbox
+- This affects the email verification flow for users who need to verify their account via email
+
+**Impact**: 
+- Users cannot complete the verification process without the confirmation code
+- Currently relying on development mode API response to include the code for testing
+- Production deployment will require this to be fixed
+
+**Possible Causes**:
+- Email service configuration issues (Gmail SMTP credentials)
+- Email being flagged as spam
+- Firewall or network restrictions blocking outbound SMTP connections
+- App-specific password not configured correctly for Gmail
+
+**Workaround**: 
+- In development mode (`NODE_ENV=development`), the confirmation code is included in the signup API response
+- This allows testing to continue while the email delivery issue is being resolved
+
+**Status**: 🔍 Under Investigation
+
+---
+
 **Last Updated**: October 18, 2025  
-**Status**: ✅ All 3 authentication steps implemented and tested successfully with JWT token generation
+**Status**: ✅ Complete authentication system implemented (Signup + Login + JWT tokens)
 
