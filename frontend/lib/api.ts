@@ -185,6 +185,85 @@ export const mentorAPI = {
   },
 };
 
+// --- CHAT API ---
+
+export type Conversation = {
+  _id: string;
+  otherParticipant: {
+    _id: string;
+    fullName: string;
+    email: string;
+    role: string;
+  };
+  lastMessage?: {
+    _id: string;
+    content: string;
+    sender: {
+      _id: string;
+      fullName: string;
+    };
+    createdAt: string;
+  };
+  lastMessageAt: string;
+  unreadCount: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type Message = {
+  _id: string;
+  conversation: string;
+  sender: {
+    _id: string;
+    fullName: string;
+    email: string;
+    role: string;
+  };
+  content: string;
+  read: boolean;
+  readAt?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export const chatAPI = {
+  // Get or create a conversation with another user
+  getOrCreateConversation: async (otherUserId: string) => {
+    const response = await api.post("/chat/conversations", { otherUserId });
+    return response.data;
+  },
+
+  // Get all conversations for current user
+  getConversations: async (): Promise<{ success: boolean; conversations: Conversation[] }> => {
+    const response = await api.get("/chat/conversations");
+    return response.data;
+  },
+
+  // Get messages for a conversation
+  getMessages: async (
+    conversationId: string,
+    page: number = 1,
+    limit: number = 50
+  ): Promise<{ success: boolean; messages: Message[]; page: number; limit: number }> => {
+    const response = await api.get(`/chat/conversations/${conversationId}/messages`, {
+      params: { page, limit },
+    });
+    return response.data;
+  },
+
+  // Send a message (REST fallback)
+  sendMessage: async (conversationId: string, content: string) => {
+    const response = await api.post("/chat/messages", { conversationId, content });
+    return response.data;
+  },
+
+  // Get available advisors/mentors (for students) or students (for advisors)
+  getAvailableAdvisors: async () => {
+    const response = await api.get("/chat/available");
+    return response.data;
+  },
+};
+
 // --- NEW: ADVISING AGENT API ---
 
 export type ApiResponse = {

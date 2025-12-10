@@ -3,51 +3,63 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-
-type Conversation = {
-  id: string;
-  advisorName: string;
-  subject: string;
-  lastMessage: string;
-  timestamp: string;
-  unread?: boolean;
-};
-
-const sampleConversations: Conversation[] = [
-  {
-    id: "1",
-    advisorName: "Dr. Khalid Idrissi",
-    subject: "Degree Audit Review",
-    lastMessage: "Let's review your remaining core requirements this week.",
-    timestamp: "2h ago",
-    unread: true,
-  },
-  {
-    id: "2",
-    advisorName: "Prof. Sofia El Fassi",
-    subject: "FYE Check-in",
-    lastMessage: "Remember to register for the leadership workshop by Friday.",
-    timestamp: "Yesterday",
-  },
-  {
-    id: "3",
-    advisorName: "Mentor Aya",
-    subject: "Peer Mentor Support",
-    lastMessage: "Happy to share my elective list if it helps!",
-    timestamp: "Mon",
-  },
-];
+import { chatAPI, Conversation } from "../../../lib/api";
+import ChatWindow from "../../../components/chat/ChatWindow";
 
 export default function ChatPage() {
   const router = useRouter();
-  const [conversations] = useState(sampleConversations);
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
 
   useEffect(() => {
     const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
     if (!token) {
       router.replace("/login");
+      return;
     }
+    loadConversations();
   }, [router]);
+
+  const loadConversations = async () => {
+    try {
+      setIsLoading(true);
+      const response = await chatAPI.getConversations();
+      setConversations(response.conversations);
+    } catch (error) {
+      console.error("Failed to load conversations:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const formatTimestamp = (dateString: string) => {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diff = now.getTime() - date.getTime();
+    const minutes = Math.floor(diff / 60000);
+    const hours = Math.floor(minutes / 60);
+    const days = Math.floor(hours / 24);
+
+    if (minutes < 1) return "Just now";
+    if (minutes < 60) return `${minutes}m ago`;
+    if (hours < 24) return `${hours}h ago`;
+    if (days < 7) return `${days}d ago`;
+    return date.toLocaleDateString();
+  };
+
+  if (selectedConversation) {
+    return (
+      <ChatWindow
+        conversationId={selectedConversation._id}
+        otherParticipant={selectedConversation.otherParticipant}
+        onBack={() => {
+          setSelectedConversation(null);
+          loadConversations(); // Refresh conversations when going back
+        }}
+      />
+    );
+  }
 
   return (
     <div className="mx-auto flex min-h-full w-full max-w-xl flex-col bg-[#F4F6FF] px-6 pb-24 pt-10">
@@ -68,28 +80,48 @@ export default function ChatPage() {
       </header>
 
       <section className="mt-8 space-y-4">
-        {conversations.map((conversation) => (
-          <button
-            key={conversation.id}
-            className="w-full rounded-3xl bg-white p-5 text-left shadow-lg shadow-[rgba(18,8,75,0.05)] transition hover:-translate-y-1 hover:shadow-xl"
-          >
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-base font-semibold text-[var(--dark-navy)]">
-                  {conversation.advisorName}
-                </h2>
-                <p className="text-sm font-medium text-[var(--primary-blue)]">{conversation.subject}</p>
+        {isLoading ? (
+          <div className="text-center py-8">
+            <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-[var(--primary-blue)] border-r-transparent"></div>
+            <p className="mt-4 text-sm text-gray-600">Loading conversations...</p>
+          </div>
+        ) : conversations.length === 0 ? (
+          <div className="rounded-3xl bg-white p-8 text-center shadow-lg shadow-[rgba(18,8,75,0.05)]">
+            <p className="text-sm text-gray-600">No conversations yet. Start a new one!</p>
+          </div>
+        ) : (
+          conversations.map((conversation) => (
+            <button
+              key={conversation._id}
+              onClick={() => setSelectedConversation(conversation)}
+              className="w-full rounded-3xl bg-white p-5 text-left shadow-lg shadow-[rgba(18,8,75,0.05)] transition hover:-translate-y-1 hover:shadow-xl"
+            >
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-base font-semibold text-[var(--dark-navy)]">
+                    {conversation.otherParticipant.fullName}
+                  </h2>
+                  <p className="text-sm font-medium text-[var(--primary-blue)] capitalize">
+                    {conversation.otherParticipant.role.replace("_", " ")}
+                  </p>
+                </div>
+                <div className="flex flex-col items-end gap-2 text-xs text-gray-500">
+                  <span>{formatTimestamp(conversation.lastMessageAt)}</span>
+                  {conversation.unreadCount > 0 && (
+                    <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-[var(--primary-blue)] text-[10px] font-semibold text-white">
+                      {conversation.unreadCount > 9 ? "9+" : conversation.unreadCount}
+                    </span>
+                  )}
+                </div>
               </div>
-              <div className="flex flex-col items-end gap-2 text-xs text-gray-500">
-                <span>{conversation.timestamp}</span>
-                {conversation.unread && (
-                  <span className="inline-flex h-2.5 w-2.5 rounded-full bg-[var(--primary-blue)]" aria-hidden="true" />
-                )}
-              </div>
-            </div>
-            <p className="mt-3 text-sm text-gray-600">{conversation.lastMessage}</p>
-          </button>
-        ))}
+              {conversation.lastMessage && (
+                <p className="mt-3 text-sm text-gray-600 line-clamp-2">
+                  {conversation.lastMessage.content}
+                </p>
+              )}
+            </button>
+          ))
+        )}
       </section>
 
       <footer className="mt-10 rounded-3xl bg-white p-5 text-sm text-gray-500 shadow-lg shadow-[rgba(18,8,75,0.05)]">

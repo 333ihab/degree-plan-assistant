@@ -7,12 +7,16 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import mongoose from 'mongoose';
+import { createServer } from 'http';
+import { Server } from 'socket.io';
 //routes imports
 import authRoutes from './routes/auth.routes.js';
 import adminRoutes from './routes/admin.routes.js';
 import advisorRoutes from './routes/advisor.routes.js';
 import mentorRoutes from './routes/mentor.routes.js';
 import degreePlanRoutes from './routes/degreePlan.routes.js';
+import chatRoutes from './routes/chat.routes.js';
+import { initializeSocket } from './utils/socket.js';
 
 // ---------------------------
 // Load environment variables
@@ -20,9 +24,10 @@ import degreePlanRoutes from './routes/degreePlan.routes.js';
 dotenv.config();
 
 // ---------------------------
-// Create Express app
+// Create Express app and HTTP server
 // ---------------------------
 const app = express();
+const httpServer = createServer(app);
 
 // ---------------------------
 // Middleware
@@ -38,6 +43,7 @@ app.use("/api/admin", adminRoutes);
 app.use("/api/advisor", advisorRoutes);
 app.use("/api/mentor", mentorRoutes);
 app.use("/api", degreePlanRoutes);
+app.use("/api/chat", chatRoutes);
 
 
 // ---------------------------
@@ -89,9 +95,24 @@ app.get("/api/test", (req, res) => {
 });
 
 // ---------------------------
+// Initialize Socket.io
+// ---------------------------
+const io = new Server(httpServer, {
+  cors: {
+    origin: ['http://localhost:3000', 'http://127.0.0.1:3000'],
+    credentials: true,
+    methods: ['GET', 'POST'],
+  },
+});
+
+initializeSocket(io);
+console.log("✅ Socket.io initialized");
+
+// ---------------------------
 // Start server
 // ---------------------------
 const PORT = process.env.PORT || 4000;
-app.listen(PORT, () => {
+httpServer.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
+  console.log(`Socket.io server ready`);
 });
