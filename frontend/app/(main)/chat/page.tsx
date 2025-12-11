@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { chatAPI, Conversation } from "../../../lib/api";
 import ChatWindow from "../../../components/chat/ChatWindow";
+import { getSocket, initializeSocket } from "../../../lib/socket";
 
 export default function ChatPage() {
   const router = useRouter();
@@ -18,7 +19,28 @@ export default function ChatPage() {
       router.replace("/login");
       return;
     }
+
+    // Initialize socket connection
+    initializeSocket();
+
     loadConversations();
+
+    // Set up socket listeners for real-time updates
+    const socket = getSocket();
+    if (socket) {
+      socket.on("conversation_updated", () => {
+        loadConversations();
+      });
+
+      socket.on("new_message", () => {
+        loadConversations();
+      });
+
+      return () => {
+        socket.off("conversation_updated");
+        socket.off("new_message");
+      };
+    }
   }, [router]);
 
   const loadConversations = async () => {
