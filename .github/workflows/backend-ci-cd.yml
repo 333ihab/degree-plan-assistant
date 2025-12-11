@@ -1,0 +1,50 @@
+name: Backend CI/CD
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'backend/**' # Only trigger if files in backend change
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'backend/**'
+
+jobs:
+  test:
+    name: Test and Lint
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./backend
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: './backend/package-lock.json'
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Uncomment this step if you have set up unit tests
+      # - name: Run Tests
+      #   run: npm test
+      #   env:
+      #     DATABASE_URL: ${{ secrets.DATABASE_URL }} 
+
+  deploy:
+    name: Deploy to Render
+    needs: test # Only run this if 'test' passes
+    if: github.ref == 'refs/heads/main' # Only deploy on push to main, not PRs
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Trigger Render Deploy
+        # This curls the Render Deploy Hook to start a deployment
+        run: curl "${{ secrets.RENDER_DEPLOY_HOOK_URL }}"

@@ -1,0 +1,48 @@
+name: Frontend CI
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'frontend/**' # Only trigger if files in frontend change
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'frontend/**'
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    
+    defaults:
+      run:
+        working-directory: ./frontend  # Crucial: Points to your Next.js folder
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: './frontend/package-lock.json'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Linting (ESLint)
+        run: npm run lint
+        # Make sure you have a "lint" script in frontend/package.json
+
+      - name: Type Checking (TypeScript)
+        # If you don't have a specific script, use tsc --noEmit
+        run: npx tsc --noEmit
+
+      - name: Build Test
+        run: npm run build
+        # This ensures the build actually succeeds before Vercel tries it
+        env:
+          # Add any public env vars needed for the build here
+          NEXT_PUBLIC_API_URL: "http://localhost:3000"
