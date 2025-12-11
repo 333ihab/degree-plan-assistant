@@ -28,10 +28,38 @@ function formatTimestamp() {
   return new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 }
 
+// --- 🧼 BRUTE FORCE CLEANER (Fixes the JSON display issue) ---
+function cleanResponse(input: any): string {
+  let text = typeof input === "string" ? input : JSON.stringify(input);
+
+  // 1. Remove Markdown Code Blocks
+  text = text.replace(/```json/gi, "").replace(/```/g, "").trim();
+  if (text.startsWith("json")) text = text.substring(4).trim();
+
+  // 2. Try to Parse if it looks like a JSON object
+  try {
+    if (text.startsWith('"') || text.startsWith("'")) text = JSON.parse(text); 
+    
+    const start = text.indexOf("{");
+    const end = text.lastIndexOf("}");
+    if (start !== -1 && end !== -1) {
+      const jsonCandidate = text.substring(start, end + 1);
+      const parsed = JSON.parse(jsonCandidate);
+      if (parsed.analysis) return parsed.analysis;
+    }
+  } catch (e) { /* Ignore parse errors */ }
+
+  // 3. Fallback Regex
+  const regexMatch = text.match(/"analysis"\s*:\s*"(.*?)"/s);
+  if (regexMatch && regexMatch[1]) return regexMatch[1].replace(/\\n/g, "\n");
+
+  return text;
+}
+
 export default function AssistantChatPage() {
   const router = useRouter();
 
-  // --- Chat State ---
+  // --- State ---
   const [messages, setMessages] = useState<Message[]>([
     {
       id: "assistant-1",
@@ -42,15 +70,12 @@ export default function AssistantChatPage() {
   ]);
   const [inputValue, setInputValue] = useState("");
   const [isAssistantTyping, setIsAssistantTyping] = useState(false);
-
-  // --- Transcript State ---
   const [transcriptFile, setTranscriptFile] = useState<File | null>(null);
   const [isTranscriptModalOpen, setIsTranscriptModalOpen] = useState(false);
   
   const endRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  // --- Effects ---
   useEffect(() => {
     const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
     if (!token) router.replace("/login");
@@ -62,15 +87,9 @@ export default function AssistantChatPage() {
 
   const disableInput = useMemo(() => !inputValue.trim() || isAssistantTyping, [inputValue, isAssistantTyping]);
 
-  // --- Handlers ---
-  
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
-    if (file.type !== "application/pdf") {
-      alert("Please upload a valid PDF file.");
-      return;
-    }
     setTranscriptFile(file);
   };
 
@@ -109,6 +128,7 @@ export default function AssistantChatPage() {
       return;
     }
 
+    // 1. Optimistic UI Update
     setMessages((prev) => [
       ...prev,
       {
@@ -122,66 +142,18 @@ export default function AssistantChatPage() {
     setInputValue("");
     setIsAssistantTyping(true);
 
-    // --- DEBUGGING START ---
     try {
-      console.log("🚀 STEP 1: Sending Request to API...");
-      
-      const rawResponse = await sendAdvisingRequest(contentToSend, transcriptFile);
-      
-      console.log("✅ STEP 2: API Returned:", rawResponse);
-      console.log("   Type of response:", typeof rawResponse);
+      // 2. Capture History (Exclude errors and the message we just added optimistically)
+      // We pass the *previous* state effectively by filtering valid messages
+      const currentHistory = messages
+        .filter(m => !m.isError)
+        .map(m => ({ sender: m.sender, content: m.content }));
 
-      // --- INLINE CLEANING LOGIC (Forcing execution) ---
-      let finalText = "";
-      let isSuccess = true;
+      // 3. Send API Request (History + File + Question)
+      const response = await sendAdvisingRequest(contentToSend, currentHistory, transcriptFile);
 
-      // Logic A: It's an Object with 'analysis'
-      if (typeof rawResponse === "object" && rawResponse !== null) {
-        if (rawResponse.analysis) {
-           finalText = typeof rawResponse.analysis === "string" 
-             ? rawResponse.analysis 
-             : JSON.stringify(rawResponse.analysis);
-           isSuccess = rawResponse.success !== false;
-           console.log("🧹 STEP 3: Extracted 'analysis' key.");
-        } else {
-           // Fallback if object but no 'analysis'
-           finalText = JSON.stringify(rawResponse, null, 2);
-           console.log("⚠️ STEP 3: Object has no 'analysis' key. Using full JSON.");
-        }
-      } 
-      // Logic B: It's a String (Maybe JSON string?)
-      else if (typeof rawResponse === "string") {
-        console.log("🧹 STEP 3: Response is a string. Attempting to clean...");
-        let trimmed = rawResponse.trim();
-        
-        // Remove Markdown blocks
-        trimmed = trimmed.replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/\s*```$/, "");
-        
-        // Try parsing JSON
-        if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
-          try {
-            const parsed = JSON.parse(trimmed);
-            if (parsed.analysis) {
-               finalText = parsed.analysis;
-               isSuccess = parsed.success !== false;
-               console.log("✨ STEP 4: Successfully parsed JSON string!");
-            } else {
-               finalText = trimmed; 
-            }
-          } catch (e) {
-            console.log("❌ STEP 4: JSON Parse failed (it might just be text). Using raw text.");
-            finalText = trimmed;
-          }
-        } else {
-           finalText = trimmed;
-        }
-      } 
-      // Logic C: Unknown
-      else {
-        finalText = String(rawResponse);
-      }
-
-      console.log("🏁 STEP 5: Final Text to Display:", finalText);
+      // 4. Clean and Display
+      const finalText = cleanResponse(response);
 
       setMessages((prev) => [
         ...prev,
@@ -190,17 +162,16 @@ export default function AssistantChatPage() {
           sender: "assistant",
           content: finalText,
           timestamp: formatTimestamp(),
-          isError: !isSuccess,
+          isError: false,
         },
       ]);
     } catch (err) {
-      console.error("🔥 ERROR CAUGHT IN COMPONENT:", err);
       setMessages((prev) => [
         ...prev,
         {
           id: `assistant-fail-${Date.now()}`,
           sender: "assistant",
-          content: "**System Error:** Connection failed. Check console for details.",
+          content: "**System Error:** Connection failed.",
           timestamp: formatTimestamp(),
           isError: true,
         },
@@ -243,13 +214,10 @@ export default function AssistantChatPage() {
         <div className="flex flex-col gap-4 overflow-y-auto pb-2 px-2">
           {messages.map((message) => (
             <Fragment key={message.id}>
-              <div
-                className={`flex w-full ${message.sender === "assistant" ? "justify-start" : "justify-end"}`}
-              >
+              <div className={`flex w-full ${message.sender === "assistant" ? "justify-start" : "justify-end"}`}>
                 <div
                   className={`
-                    relative max-w-[90%] rounded-3xl px-5 py-4 text-sm leading-relaxed shadow-sm
-                    min-w-0 
+                    relative max-w-[90%] rounded-3xl px-5 py-4 text-sm leading-relaxed shadow-sm min-w-0 
                     ${message.sender === "assistant"
                       ? message.isError
                         ? "rounded-bl-md bg-red-50 text-red-800 border border-red-100"
@@ -272,7 +240,6 @@ export default function AssistantChatPage() {
                       {message.content}
                     </ReactMarkdown>
                   </div>
-                  
                   <span className={`mt-2 block text-[10px] opacity-70 text-right`}>
                     {message.timestamp}
                   </span>

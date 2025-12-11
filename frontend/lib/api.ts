@@ -192,26 +192,46 @@ export type ApiResponse = {
   analysis: string;
 }
 
+// --- UPDATED ADVISING FUNCTION ---
 export const sendAdvisingRequest = async (
-  question: string,
-  transcriptFile: File // Now accepts a File object
+  currentQuestion: string,
+  history: { sender: 'user' | 'assistant'; content: string }[], // New History Parameter
+  transcriptFile: File
 ): Promise<ApiResponse> => {
   try {
     const formData = new FormData();
-    formData.append('question', question);
-    formData.append('transcript', transcriptFile); // Key must match backend (e.g., upload.single('transcript'))
+
+    // 1. Format the history into a string context
+    // We take the last 6 messages to keep the prompt size manageable
+    const recentHistory = history.slice(-6).map(msg => 
+      `${msg.sender === 'user' ? 'Student' : 'Advisor'}: ${msg.content}`
+    ).join('\n');
+
+    // 2. Combine History + New Question
+    const fullPrompt = `
+      CONTEXT FROM PREVIOUS MESSAGES:
+      ${recentHistory}
+
+      CURRENT QUESTION:
+      ${currentQuestion}
+      `;
+
+    // 3. Append to FormData
+    formData.append('question', fullPrompt); 
+    formData.append('transcript', transcriptFile);
 
     const response = await api.post('/analyze-plan', formData, {
       headers: {
-        'Content-Type': 'multipart/form-data', // Explicitly set for file upload
+        'Content-Type': 'multipart/form-data',
       },
     });
-    return response.data.analysis;
+    const newResponse = response.data.analysis
+    return newResponse;
   } catch (error) {
     console.error("Advising Request Failed:", error);
     return {
       success: false,
-      analysis: "**System Error:** Failed to upload transcript or connect to advisor."
+      analysis: "**System Error:** Failed to connect to advisor."
     };
   }
 }
